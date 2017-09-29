@@ -33,6 +33,7 @@ import io.netty.handler.codec.http.LastHttpContent;
 import io.netty.util.CharsetUtil;
 import org.junit.Test;
 
+import java.net.URLEncoder;
 import java.nio.charset.UnsupportedCharsetException;
 import java.util.Arrays;
 
@@ -490,5 +491,38 @@ public class HttpPostRequestDecoderTest {
             decoder.destroy();
             content.release();
         }
+    }
+
+    // https://github.com/netty/netty/pull/7265
+    @Test
+    public void testDecodeContentDispositionFieldParameters() throws Exception {
+
+        final String boundary = "74e78d11b0214bdcbc2f86491eeb4902";
+
+        String encoding = "utf-8";
+        String filename = "attached_файл.txt";
+        String filenameEncoded = URLEncoder.encode(filename, encoding);
+
+        final String body = "--" + boundary + "\r\n" +
+          "Content-Disposition: form-data; name=\"file\"; filename*=" + encoding + "''" + filenameEncoded + "\r\n" +
+          "\r\n" +
+          "foo\r\n" +
+          "\r\n" +
+          "--" + boundary + "--";
+
+        final DefaultFullHttpRequest req = new DefaultFullHttpRequest(HttpVersion.HTTP_1_1,
+                                                                      HttpMethod.POST,
+                                                                      "http://localhost",
+                                                                      Unpooled.wrappedBuffer(body.getBytes()));
+
+        req.headers().add(HttpHeaderNames.CONTENT_TYPE, "multipart/form-data; boundary=" + boundary);
+        final DefaultHttpDataFactory inMemoryFactory = new DefaultHttpDataFactory(false);
+        final HttpPostRequestDecoder decoder = new HttpPostRequestDecoder(inMemoryFactory, req);
+        assertFalse(decoder.getBodyHttpDatas().isEmpty());
+        InterfaceHttpData part1 = decoder.getBodyHttpDatas().get(0);
+        assertTrue("the item should be a FileUpload", part1 instanceof FileUpload);
+        FileUpload fileUpload = (FileUpload) part1;
+        assertEquals("the filename should be decoded", filename, fileUpload.getFilename());
+        decoder.destroy();
     }
 }

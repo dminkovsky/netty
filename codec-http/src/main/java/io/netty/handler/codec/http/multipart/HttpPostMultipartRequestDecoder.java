@@ -22,6 +22,7 @@ import io.netty.handler.codec.http.HttpHeaderNames;
 import io.netty.handler.codec.http.HttpHeaderValues;
 import io.netty.handler.codec.http.HttpRequest;
 import io.netty.handler.codec.http.LastHttpContent;
+import io.netty.handler.codec.http.QueryStringDecoder;
 import io.netty.handler.codec.http.multipart.HttpPostBodyUtil.SeekAheadOptimize;
 import io.netty.handler.codec.http.multipart.HttpPostBodyUtil.TransferEncodingMechanism;
 import io.netty.handler.codec.http.multipart.HttpPostRequestDecoder.EndOfDataDecoderException;
@@ -694,10 +695,22 @@ public class HttpPostMultipartRequestDecoder implements InterfaceHttpPostRequest
                             String name = cleanString(values[0]);
                             String value = values[1];
 
+                            boolean shouldDecode = false;
+                            int last = name.length() - 1;
+                            if (name.charAt(last) == '*') {
+                                shouldDecode = true;
+                                name = name.substring(0, last);
+                            }
+
                             // See http://www.w3.org/Protocols/rfc2616/rfc2616-sec19.html
                             if (HttpHeaderValues.FILENAME.contentEquals(name)) {
                                 // filename value is quoted string so strip them
-                                value = value.substring(1, value.length() - 1);
+                                if (!shouldDecode) {
+                                    value = value.substring(1, value.length() - 1);
+                                } else {
+                                    String[] split = value.split("''", 2);
+                                    value = QueryStringDecoder.decodeComponent(split[1], Charset.forName(split[0]));
+                                }
                             } else {
                                 // otherwise we need to clean the value
                                 value = cleanString(value);
