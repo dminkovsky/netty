@@ -40,6 +40,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
+import java.util.regex.Pattern;
 
 import static io.netty.buffer.Unpooled.*;
 import static io.netty.util.internal.ObjectUtil.*;
@@ -795,33 +796,27 @@ public class HttpPostMultipartRequestDecoder implements InterfaceHttpPostRequest
         }
     }
 
+    private static final Pattern DOUBLE_SINGLE_QUOTE = Pattern.compile("''");
+    private static final String FILENAME_ENCODED = HttpHeaderValues.FILENAME.toString() + '*';
+
     private Attribute getContentDispositionAttribute(String... values) {
-        Attribute attribute;
         String name = cleanString(values[0]);
         String value = values[1];
-
-        boolean shouldDecode = false;
-        int last = name.length() - 1;
-        if (name.charAt(last) == '*') {
-            shouldDecode = true;
-            name = name.substring(0, last);
-        }
 
         // See http://www.w3.org/Protocols/rfc2616/rfc2616-sec19.html
         if (HttpHeaderValues.FILENAME.contentEquals(name)) {
             // filename value is quoted string so strip them
-            if (!shouldDecode) {
-                value = value.substring(1, value.length() - 1);
-            } else {
-                String[] split = value.split("''", 2);
-                value = QueryStringDecoder.decodeComponent(split[1], Charset.forName(split[0]));
-            }
+            value = value.substring(1, value.length() - 1);
+        } else if (FILENAME_ENCODED.equals(name)) {
+            // filename value is encoded. See https://tools.ietf.org/html/rfc5987
+            name = name.substring(0, name.length() - 1);
+            String[] split = DOUBLE_SINGLE_QUOTE.split(value, 2);
+            value = QueryStringDecoder.decodeComponent(split[1], Charset.forName(split[0]));
         } else {
             // otherwise we need to clean the value
             value = cleanString(value);
         }
-        attribute = factory.createAttribute(request, name, value);
-        return attribute;
+        return factory.createAttribute(request, name, value);
     }
 
     /**
